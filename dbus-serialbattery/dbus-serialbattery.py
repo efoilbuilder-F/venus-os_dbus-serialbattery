@@ -33,6 +33,7 @@ from utils import (
 # import battery classes
 # TODO: import only the classes that are needed
 from bms.daly import Daly
+from bms.daly_hkms_100balance import Daly_HKMS_100balance
 from bms.daren_485 import Daren485
 from bms.ecs import Ecs
 from bms.eg4_lifepower import EG4_Lifepower
@@ -64,6 +65,7 @@ if "Sinowealth" in BMS_TYPE:
 supported_bms_types = [
     {"bms": Daly, "baud": 9600, "address": b"\x40"},
     {"bms": Daly, "baud": 9600, "address": b"\x80"},
+    {"bms": Daly_HKMS_100balance, "baud": 9600, "address": b"\x50"},
     {"bms": Daren485, "baud": 9600, "address": b"\x01"},
     {"bms": Daren485, "baud": 19200, "address": b"\x01"},
     {"bms": Ecs, "baud": 19200},
