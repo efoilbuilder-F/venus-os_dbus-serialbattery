@@ -14,7 +14,7 @@ import serial
 import time
 
 # CONSTANTS
-DRIVER_VERSION: str = "2.1.20260528dev"
+DRIVER_VERSION: str = "2.1.20260530dev"
 """
 current version of the driver
 """
@@ -243,6 +243,28 @@ if SOC_RESET_AFTER_DAYS and SOC_RESET_CELL_VOLTAGE < MAX_CELL_VOLTAGE:
 
 # --------- SoC Calculation ---------
 SOC_CALCULATION: bool = get_bool_from_config("DEFAULT", "SOC_CALCULATION")
+SOC_CALCULATION_VOLTAGE_ONLY: bool = get_bool_from_config("DEFAULT", "SOC_CALCULATION_VOLTAGE_ONLY")
+
+SOC_CALCULATION_VOLTAGE_ONLY_VOLTAGES: list = get_list_from_config("DEFAULT", "SOC_CALCULATION_VOLTAGE_ONLY_VOLTAGES", float)
+SOC_CALCULATION_VOLTAGE_ONLY_SOCS: list = get_list_from_config("DEFAULT", "SOC_CALCULATION_VOLTAGE_ONLY_SOCS", float)
+logger.debug("list: SOC_CALCULATION_VOLTAGE_ONLY_VOLTAGES")
+logger.debug(SOC_CALCULATION_VOLTAGE_ONLY_VOLTAGES)
+logger.debug("list: SOC_CALCULATION_VOLTAGE_ONLY_SOCS")
+logger.debug(SOC_CALCULATION_VOLTAGE_ONLY_SOCS)
+
+# make some checks for most common misconfigurations
+if SOC_CALCULATION_VOLTAGE_ONLY:
+    if len(SOC_CALCULATION_VOLTAGE_ONLY_VOLTAGES) != len(SOC_CALCULATION_VOLTAGE_ONLY_SOCS):
+        check_config_issue(
+            True,
+            "The length of the lists SOC_CALCULATION_VOLTAGE_ONLY_VOLTAGES, SOC_CALCULATION_VOLTAGE_ONLY_SOCS is not equal."
+            "To ensure that the driver still works correctly. Please check the configuration.",
+        )
+    check_config_issue(
+        100 not in SOC_CALCULATION_VOLTAGE_ONLY_SOCS,
+        "In SOC_CALCULATION_VOLTAGE_ONLY_SOCS missing a list item for 100 percent SOC"
+        "There should be values for 100% and 0% SOC and additional values in between for better interpolation. Please check the configuration.",
+    )
 
 # --------- Current correction --------
 CURRENT_REPORTED_BY_BMS: list = get_list_from_config("DEFAULT", "CURRENT_REPORTED_BY_BMS", float)
