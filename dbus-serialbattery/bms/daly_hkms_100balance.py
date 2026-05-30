@@ -202,7 +202,8 @@ DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_1 = 0x0145
 # 81 06 01 45 75 B1 60 C7 51 06 01 45 75 B1 73 57 set discharge overcurrent alarm level 1 to 12.9A (0x75B1 == 30129 --> 30129 - 30000 = 129 --> 12.9A)
 DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_2 = 0x0146
 DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_2_DELAY = 0x0147
-# 81 06 01 47 30 39 F3 F1 51 06 01 47 30 39 E0 61 set discharge overcurrent alarm level 2 delay to 12345ms (0x3039 == 12345) on device number 1 in BMS Tool v1.14.23 (Addr(Bms): Addr_01 == 0x51 in response modbus and 0x81 in request modbus)
+# 81 06 01 47 30 39 F3 F1 51 06 01 47 30 39 E0 61 set discharge overcurrent alarm level 2 delay to 12345ms (0x3039 == 12345) on device number 1
+# in BMS Tool v1.14.23 (Addr(Bms): Addr_01 == 0x51 in response modbus and 0x81 in request modbus)
 DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_3 = 0x0148
 # 1 16bit register wide, value is 30000 + current limit in 0.1A steps, so for e.g. 18.9A set value to 30183 (0x75E7) written to bus with in order 0x75 0xE7
 DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_3_DELAY = 0x0149
@@ -384,9 +385,9 @@ class Daly_HKMS_100balance(Battery):
                 totalahdischarged = (hist_regs[2] * 65536 + hist_regs[3]) / 1000
                 # logger.debug("totalahcharged: " + str(totalahcharged) + " totalahdischarged: " + str(totalahdischarged))
                 self.history.total_ah_drawn = totalahdischarged
-                # current limits, set Alarm level 1 correctly, the pre warning level in the BMS Tool PC program, the BMS App for phones only sets the Alarm level 2,
-                # which disables the corresponding mosfet. This code uses the Alarm level 1 as limit. Alternitavely use MAX_BATTERY_CHARGE_CURRENT and
-                # MAX_BATTERY_DISCHARGE_CURRENT in config.ini to set another limit
+                # current limits, set Alarm level 1 correctly, the pre warning level in the BMS Tool PC program, the BMS App for phones only sets
+                # the Alarm level 2, which disables the corresponding mosfet. This code uses the Alarm level 1 as limit.
+                # Alternitavely use MAX_BATTERY_CHARGE_CURRENT and MAX_BATTERY_DISCHARGE_CURRENT in config.ini to set another limit.
                 logger.debug("currentlimit_regs[0]: " + str(currentlimit_regs[0]) + " currentlimit_regs[5]: " + str(currentlimit_regs[5]))
                 self.max_battery_charge_current = (30000 - currentlimit_regs[0]) / 10
                 self.max_battery_discharge_current = (currentlimit_regs[5] - 30000) / 10
