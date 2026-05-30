@@ -191,6 +191,24 @@ DALY_MODBUS_ADDR_CAPACITIES = 0x0109
 DALY_MODBUS_ADDR_TOTAL_AH_CHARGED = 0x10D
 DALY_MODBUS_ADDR_TOTAL_AH_DISCHARGED = 0x10F
 DALY_MODBUS_ADDR_PRODUCTION_DATE = 0x0129
+DALY_MODBUS_ADDR_CHG_OVERCURRENT_LIMIT_1 = 0x0140
+DALY_MODBUS_ADDR_CHG_OVERCURRENT_LIMIT_2 = 0x0141
+DALY_MODBUS_ADDR_CHG_OVERCURRENT_LIMIT_2_DELAY = 0x0142
+# 81 06 01 42 04 D2 B5 7F 51 06 01 42 04 D2 A6 EF set overcurrent limit delay 2 to 1234ms (0x04D2)
+DALY_MODBUS_ADDR_CHG_OVERCURRENT_LIMIT_3 = 0x0143
+DALY_MODBUS_ADDR_CHG_OVERCURRENT_LIMIT_3_DELAY = 0x0144
+# 81 06 01 44 15 38 D8 A1 51 06 01 44 15 38 CB 31 set overcurrent limit delay 3 to 5432ms (0x1538)
+DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_1 = 0x0145
+# 81 06 01 45 75 B1 60 C7 51 06 01 45 75 B1 73 57 set discharge overcurrent alarm level 1 to 12.9A (0x75B1 == 30129 --> 30129 - 30000 = 129 --> 12.9A)
+DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_2 = 0x0146
+DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_2_DELAY = 0x0147
+# 81 06 01 47 30 39 F3 F1 51 06 01 47 30 39 E0 61 set discharge overcurrent alarm level 2 delay to 12345ms (0x3039 == 12345) on device number 1 in BMS Tool v1.14.23 (Addr(Bms): Addr_01 == 0x51 in response modbus and 0x81 in request modbus)
+DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_3 = 0x0148
+# 1 16bit register wide, value is 30000 + current limit in 0.1A steps, so for e.g. 18.9A set value to 30183 (0x75E7) written to bus with in order 0x75 0xE7
+DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_3_DELAY = 0x0149
+# 1 16bit reg, value is integer in ms
+# 81 06 01 49 7A 0D A4 85 51 06 01 49 7A 0D B7 15 set discharge overcurrent alarm level 3 delay to 31245ms (0x7A0D == 31245)
+
 DALY_MODBUS_ADDR_SW_HW_VER = 0x0178
 
 # #end of imported / ported code
@@ -326,6 +344,9 @@ class Daly_HKMS_100balance(Battery):
                 )
                 capacityregs = mbdev.read_registers(DALY_MODBUS_ADDR_CAPACITIES, 4, 3)
                 productiondateregs = mbdev.read_registers(DALY_MODBUS_ADDR_PRODUCTION_DATE, 0x02, 3)
+                currentlimit_regs = mbdev.read_registers(
+                    DALY_MODBUS_ADDR_CHG_OVERCURRENT_LIMIT_1, DALY_MODBUS_ADDR_DSCHG_OVERCURRENT_LIMIT_3_DELAY - DALY_MODBUS_ADDR_CHG_OVERCURRENT_LIMIT_1 + 1, 3
+                )
                 # convert and set
                 swhwvers_bytes = minimalmodbus._valuelist_to_bytes(swhwvers_regs, 0x68)
                 hwverA = swhwvers_bytes[0:14].rstrip(b"\x00").decode(encoding="ascii")
@@ -363,6 +384,13 @@ class Daly_HKMS_100balance(Battery):
                 totalahdischarged = (hist_regs[2] * 65536 + hist_regs[3]) / 1000
                 # logger.debug("totalahcharged: " + str(totalahcharged) + " totalahdischarged: " + str(totalahdischarged))
                 self.history.total_ah_drawn = totalahdischarged
+                # current limits, set Alarm level 1 correctly, the pre warning level in the BMS Tool PC program, the BMS App for phones only sets the Alarm level 2,
+                # which disables the corresponding mosfet. This code uses the Alarm level 1 as limit. Alternitavely use MAX_BATTERY_CHARGE_CURRENT and
+                # MAX_BATTERY_DISCHARGE_CURRENT in config.ini to set another limit
+                logger.debug("currentlimit_regs[0]: " + str(currentlimit_regs[0]) + " currentlimit_regs[5]: " + str(currentlimit_regs[5]))
+                self.max_battery_charge_current = (30000 - currentlimit_regs[0]) / 10
+                self.max_battery_discharge_current = (currentlimit_regs[5] - 30000) / 10
+
                 self.Daly_HKMS_100balance_communtication_start_time = time.time()
             except Exception as e:
                 logger.warning("Error reading sw hw version strings and battcode from BMS: " + str(e))
@@ -642,11 +670,12 @@ class Daly_HKMS_100balance(Battery):
             self.protection.high_cell_voltage = 2 if (error_flags.b.lvl_cell_ovp > 1) else (1 if (error_flags.b.lvl_cell_ovp != 0) else 0)
             self.protection.low_cell_voltage = 2 if (error_flags.b.lvl_cell_uvp != 0) else 0
             self.protection.low_voltage = 2 if (error_flags.b.lvl_total_uvp != 0) else 0
-            self.protection.high_charge_current = 2 if (error_flags.b.lvl_chg_ocp != 0) else 0
             self.protection.high_discharge_current = (
                 2 if (error_flags.b.lvl_dschg_ocp > 1 or error_flags.b.err_short_circuit != 0) else (1 if error_flags.b.lvl_dschg_ocp != 0 else 0)
             )
-            self.protection.high_charge_current = 2 if (error_flags.b.lvl_chg_ocp != 0) else 0
+            self.protection.high_charge_current = (
+                2 if (error_flags.b.lvl_chg_ocp > 1 or error_flags.b.err_short_circuit != 0) else (1 if error_flags.b.lvl_chg_ocp != 0 else 0)
+            )
             self.protection.high_charge_temperature = 2 if (error_flags.b.lvl_chg_overtemp != 0 or error_flags.b.err_chg_mos_temp_high != 0) else 0
             self.protection.low_charge_temperature = 2 if (error_flags.b.lvl_chg_undertemp != 0) else 0
             self.protection.high_internal_temperature = (
