@@ -651,6 +651,43 @@ class Battery(ABC):
                 logger.debug("SOC initialized from dbus and set to " + str(self.soc_calc) + "%")
 
             self.soc_calc_capacity_remain_last_time = current_time
+        if utils.SOC_CALCULATION_VOLTAGE_ONLY:
+            # SOC list for Liion Battery (Dummy, is overwritten with list from config)
+            # SOC_list = [ 100,  90,   80,   70,   60,   40,   20,  10,   5,   0]
+            # SOC_volt = [4.16, 4.1, 3.95, 3.85, 3.80, 3.70, 3.55, 3.3, 3.2, 3.0]
+            # SOC list for LTO Battery
+            # SOC_list = [100,      96,       95.8,     94.6,   91.8,   88.1,  86.2, 85.3,   77.3,   74.7,  68.3,  60.8,     59,   57.1,   54.5, 49.2,   46.3,
+            #               43.8,   32.7,   24.1,   19.1,    8.3,      5, 0]
+            # SOC_volt = [2.6,  2.5968,     2.5884,   2.5366, 2.5002, 2.4694, 2.454, 2.44, 2.3742, 2.3602, 2.314, 2.272, 2.2622, 2.2552, 2.2468, 2.23, 2.2202,
+            #             2.2132, 2.1894, 2.1712, 2.1572, 2.1222, 2.1096, 2]
+            # many more checks for configuration errors should be added in utils where this is read from the config file
+
+            mincellu = self.get_min_cell_voltage()
+            maxcellu = self.get_max_cell_voltage()
+            if (mincellu is not None) and (maxcellu is not None):
+                voltageSOCmin = utils.calc_linear_relationship(mincellu, utils.SOC_CALCULATION_VOLTAGE_ONLY_VOLTAGES, utils.SOC_CALCULATION_VOLTAGE_ONLY_SOCS)
+                voltageSOCmax = utils.calc_linear_relationship(maxcellu, utils.SOC_CALCULATION_VOLTAGE_ONLY_VOLTAGES, utils.SOC_CALCULATION_VOLTAGE_ONLY_SOCS)
+                voltageSOC = voltageSOCmin
+                if voltageSOCmax > 80:
+                    voltageSOC = voltageSOCmax
+                if self.current_calc is not None:
+                    logger.debug(
+                        "(self.max_battery_charge_current * 0.2): "
+                        + str(self.max_battery_charge_current * 0.2)
+                        + " -(self.max_battery_discharge_current * 0.2): "
+                        + str(-(self.max_battery_discharge_current * 0.2))
+                    )
+                    if self.current_calc < (self.max_battery_charge_current * 0.2) and self.current_calc > -(self.max_battery_discharge_current * 0.2):
+                        self.soc_calc_capacity_remain = (self.capacity * voltageSOC) / 100
+                        logger.info(
+                            "SOC calculation based on voltage is active mincellu: "
+                            + str(voltageSOCmin)
+                            + "% maxcellu: "
+                            + str(voltageSOCmax)
+                            + "% exported: "
+                            + str(voltageSOC)
+                            + "%"
+                        )
 
         # calculate the SOC based on remaining capacity
         return round(max(min((self.soc_calc_capacity_remain / self.capacity) * 100, 100), 0), 3)
