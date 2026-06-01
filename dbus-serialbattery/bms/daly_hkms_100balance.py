@@ -261,7 +261,8 @@ class Daly_HKMS_100balance(Battery):
         self.soc_to_set = None
         self.last_charge_mode = self.charge_mode
         self.available_callbacks = [
-            "reset_soc_callback",
+            "callback_soc_reset_to",
+            "trigger_soc_reset",
         ]
 
     def test_connection(self):
@@ -410,15 +411,15 @@ class Daly_HKMS_100balance(Battery):
         return erractive
 
     def daly_pretty_print_all_errors(self, errors: DALY_ERROR_FLAGS_type):
-        logger.debug("______________ some errors active ______ complete error list:")
+        logger.debug("______________ some errors active ______ complete error list: (" + self.unique_identifier_tmp + ")")
         if errors.b.lvl_cell_ovp != 0:
             logger.debug("lvl_cell_ovp: " + str(errors.b.lvl_cell_ovp))
         if errors.b.lvl_cell_uvp != 0:
             logger.debug("lvl_cell_uvp: " + str(errors.b.lvl_cell_uvp))
-        if errors.b.smart_charger_connected != 0:
-            logger.debug("smart_charger_connected: " + str(errors.b.smart_charger_connected))
-        if errors.b.err_smart_charger_connection != 0:
-            logger.debug("err_smart_charger_connection: " + str(errors.b.err_smart_charger_connection))
+        # if errors.b.smart_charger_connected != 0:
+        #     logger.debug("smart_charger_connected: " + str(errors.b.smart_charger_connected))
+        # if errors.b.err_smart_charger_connection != 0:
+        #     logger.debug("err_smart_charger_connection: " + str(errors.b.err_smart_charger_connection))
         if errors.b.lvl_cell_volt_diff != 0:
             logger.debug("lvl_cell_volt_diff: " + str(errors.b.lvl_cell_volt_diff))
         if errors.b.lvl_chg_overtemp != 0:
@@ -749,8 +750,8 @@ class Daly_HKMS_100balance(Battery):
                 self.cells[i].voltage = cellvoltageregs[i] / 1000
                 self.cells[i].balance = self.get_balancing_status_for_cellno(allregsatonceB, i)
 
-        if AUTO_RESET_SOC:
-            self.update_soc_on_bms()
+        # if AUTO_RESET_SOC:
+        #     self.update_soc_on_bms()
 
         return True
 
@@ -760,8 +761,17 @@ class Daly_HKMS_100balance(Battery):
         """
         return self.unique_identifier_tmp
 
-    #
-    def reset_soc_callback(self, path, value):
+    def callback_soc_reset_to(self, path: str, value) -> bool:
+        """
+        Callback to reset the SOC directly on the BMS hardware (not in the driver)
+        to a specific value.
+
+        :param self: Instance of the battery class
+        :param path: d-bus path of the value that changed (can be ignored in this case)
+        :param value: value that was set through the GUI
+        :return: True if the callback was handled successfully, False otherwise
+        """
+        logger.debug(f"callback_soc_reset_to called with value: {value}, setting SOC on BMS to this value")
         if value is None:
             return False
 
@@ -770,17 +780,17 @@ class Daly_HKMS_100balance(Battery):
 
         self.reset_soc = value
         self.soc_to_set = value
-        self.write_soc()
-        return True
+        return self.write_soc()
 
     def write_soc(self):
         if self.soc_to_set is None:
             return False
-
+        logger.debug(f"write_soc called, soc_to_set: {self.soc_to_set}")
         mbdev = mbdevs[self.address]
         time.sleep(0.2)
         with locks[self.address]:
             try:
+                time.sleep(0.5)
                 mbdev.write_register(DALY_MODBUS_ADDR_SET_SOC, self.soc_to_set * 10, 0, 6, False)
                 self.Daly_HKMS_100balance_communtication_SOC_set_on_bms_since_driver_start = (
                     self.Daly_HKMS_100balance_communtication_SOC_set_on_bms_since_driver_start + 1
@@ -789,6 +799,7 @@ class Daly_HKMS_100balance(Battery):
                     f"wrote {self.soc_to_set}%, soc writes since driver start: {self.Daly_HKMS_100balance_communtication_SOC_set_on_bms_since_driver_start}%"
                 )
                 self.soc_to_set = None  # Reset value, so we will set it only once
+                return True
             except Exception as e:
                 self.Daly_HKMS_100balance_communtication_error_count = self.Daly_HKMS_100balance_communtication_error_count + 1
                 timesincelasterror: float = (
@@ -810,11 +821,16 @@ class Daly_HKMS_100balance(Battery):
                 )
                 logger.warning("Error setting SOC on BMS: " + str(e))
                 return False
+        return False
 
-    def update_soc_on_bms(self):
-        if self.last_charge_mode is not None and self.charge_mode is not None:
-            if not self.last_charge_mode.startswith("Float") and self.charge_mode.startswith("Float"):
-                # we just entered float mode, so the battery must be full
-                self.soc_to_set = 100
-                self.write_soc()
-        self.last_charge_mode = self.charge_mode
+    def trigger_soc_reset(self) -> bool:
+        """
+        This method is called when the driver charging algorithm changes from bulk/absorption to float.
+        It can be used to set the SOC on the BMS hardware (not in the driver) to 100% when the battery is
+        assumed to be full
+
+        :return: True if the callback was handled successfully, False otherwise
+        """
+        logger.debug("trigger_soc_reset called, setting SOC on BMS to 100%")
+        self.soc_to_set = 100
+        return self.write_soc()
