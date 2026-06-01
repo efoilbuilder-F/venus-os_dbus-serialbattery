@@ -10,7 +10,7 @@ from utils import (
     get_connection_error_message,
     # open_serial_port,
     logger,
-    AUTO_RESET_SOC,
+    # AUTO_RESET_SOC,
     BATTERY_CAPACITY,
     # INVERT_CURRENT_MEASUREMENT,
     # MIN_CELL_VOLTAGE,
